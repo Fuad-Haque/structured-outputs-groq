@@ -1,20 +1,17 @@
-﻿# structured-outputs-groq
-```markdown
 # structured-outputs-groq
 
 <div align="center">
 
-[![Typing SVG](https://readme-typing-svg.demolab.com?font=Sora&weight=700&size=22&duration=2800&pause=1000&color=6C63FF&center=true&vCenter=true&width=700&lines=Extract+Structured+JSON+from+Unstructured+Text.;Strict+Mode+%C2%B7+Schema-Constrained+%C2%B7+Groq+Free+Tier;OpenAI+SDK+%C2%B7+gpt-oss-20b+%C2%B7+Zero+Parsing+Errors;Built+for+developers+who+demand+guaranteed+shape.)](https://git.io/typing-svg)
+[![Typing SVG](https://readme-typing-svg.demolab.com?font=Sora&weight=700&size=22&duration=2800&pause=1000&color=6C63FF&center=true&vCenter=true&width=700&lines=Unstructured+Text+In.+Valid+JSON+Out.;Strict+Mode+%C2%B7+Zero+Repair+Logic;Groq+%C2%B7+OpenAI+SDK+%C2%B7+JSON+Schema;No+Malformed+JSON.+No+Retries.+No+Exceptions.)](https://git.io/typing-svg)
 
 </div>
 
 <div align="center">
 
 ![Python](https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white)
-![OpenAI SDK](https://img.shields.io/badge/OpenAI-412991?style=for-the-badge&logo=openai&logoColor=white)
-![Groq](https://img.shields.io/badge/Groq-00C7B7?style=for-the-badge)
-![JSON Schema](https://img.shields.io/badge/JSON_Schema-000000?style=for-the-badge&logo=json&logoColor=white)
-![dotenv](https://img.shields.io/badge/dotenv-ECD53F?style=for-the-badge&logo=dotenv&logoColor=black)
+![OpenAI](https://img.shields.io/badge/OpenAI_SDK-412991?style=for-the-badge&logo=openai&logoColor=white)
+![Groq](https://img.shields.io/badge/Groq-F55036?style=for-the-badge&logoColor=white)
+![JSON](https://img.shields.io/badge/JSON_Schema-000000?style=for-the-badge&logo=json&logoColor=white)
 
 </div>
 
@@ -22,7 +19,13 @@
 
 ## Overview
 
-**structured-outputs-groq** is a lightweight, schema-driven JSON extraction tool that forces an LLM to output exactly the shape you want — every single time. It takes 10 unstructured product reviews (varying length, tone, and completeness) and extracts a rigid, schema-valid JSON object from each one — same four fields, correct types, and a closed sentiment enum — using Groq’s free-tier API with strict-mode Structured Outputs. No retries. No repair loops. No downstream surprises.
+**structured-outputs-groq** is a schema-constrained JSON extraction pipeline. It takes 10 unstructured, real-world-shaped text inputs — product reviews of varying length, tone, and completeness — and returns a rigid, schema-valid JSON object for every single one. Same four fields, correct types, closed enum for sentiment, every time.
+
+Free-text JSON generation from an LLM occasionally produces malformed or wrong-shaped output — missing fields, wrong types, extra keys — which silently corrupts anything downstream expecting a specific shape. This project uses OpenAI's **Structured Outputs** (`strict: true`) instead, which constrains decoding at the token level so an invalid shape is structurally impossible to emit.
+
+It runs against **Groq's free-tier, OpenAI-compatible API** via the official `openai` Python SDK — meaning the exact same code runs against real OpenAI with a one-line `base_url` swap.
+
+**Run it** → `python main.py` (see [Quick Start](#quick-start))
 
 ---
 
@@ -31,12 +34,11 @@
 - [Features](#features)
 - [Architecture](#architecture)
 - [Stack](#stack)
-- [Script Reference](#script-reference)
+- [Extraction Schema](#extraction-schema)
+- [Structured Outputs vs. Free-Text JSON](#structured-outputs-vs-free-text-json)
 - [Environment Variables](#environment-variables)
 - [Quick Start](#quick-start)
-- [Docker](#docker)
 - [Project Structure](#project-structure)
-- [Error Handling](#error-handling)
 - [Author](#author)
 
 ---
@@ -45,35 +47,42 @@
 
 | Feature | Detail |
 |---------|--------|
-| Strict JSON Schema Enforcement | Uses `response_format` with `strict: true` — invalid shape becomes structurally impossible to emit |
-| Batch Processing | Runs extraction against 10 pre‑loaded, real-world‑shaped product reviews in one go |
-| Zero Retry / Repair Logic | Strict mode guarantees the schema holds; no fallback parsing needed |
-| Free-Tier Backend | Leverages Groq’s `openai/gpt-oss-20b` model at no cost |
-| Drop-in OpenAI Compatibility | Points the official `openai` Python SDK at Groq’s endpoint with a one‑line `base_url` change |
-| Environment Variable Security | API key kept out of source via `python-dotenv` |
+| Strict Schema Enforcement | `response_format={"type": "json_schema", "strict": true}` — invalid shape is structurally impossible to emit, not just discouraged |
+| Fixed 4-Field Schema | Every output has exactly `product_name`, `rating`, `sentiment`, `key_features` — no more, no fewer |
+| Closed Enum for Sentiment | `sentiment` is constrained to a fixed set of values via the schema itself — never a stray label |
+| Zero Repair Logic | No retry loop, regex, or JSON-repair step — strict mode guarantees valid shape on the first response |
+| Provider-Portable | Identical `openai` SDK code runs against Groq or real OpenAI — swap only `base_url` |
+| Diverse Test Set | 10 real-world-shaped product reviews spanning varying length, tone, and completeness |
+| Free-Tier Backend | Runs entirely on Groq's free tier using `openai/gpt-oss-20b`, confirmed to support `strict: true` |
 
 ---
 
 ## Architecture
 
 ```
-Unstructured Inputs (10 product reviews)
+10 Unstructured Text Inputs (product reviews)
+        │
+        ├── One JSON Schema defined once (4 fields, closed enum)
+        │
+        ├── openai SDK → base_url override → Groq (openai/gpt-oss-20b)
+        │
+        ├── response_format = {"type": "json_schema", "strict": true}
+        │
+        └── Strict-mode constrained decoding
                 │
-                ▼
-          main.py
-                │
-     OpenAI SDK (base_url=Groq)
-                │
-                ▼
-      Groq API (gpt-oss-20b)
-       + strict JSON Schema
-                │
-                ▼
-   10 × perfectly‑shaped JSON objects
-   (product_name, rating, sentiment, key_features)
+                └── Schema-valid JSON returned — parsed directly, no repair step
 ```
 
-The schema is defined once, reused for every input, and sent inside `response_format`. Because strict mode constrains token generation, the output is always a valid instance of that schema — no repair loops, no unexpected fields.
+### Extraction Flow
+
+```
+Read input text
+        │
+        ├── Build request with fixed JSON Schema + strict:true
+        ├── Send to Groq via OpenAI-compatible endpoint
+        ├── Model constrained at token level to schema shape
+        └── Parse response directly → print JSON block
+```
 
 ---
 
@@ -81,47 +90,77 @@ The schema is defined once, reused for every input, and sent inside `response_fo
 
 | Layer | Technology |
 |-------|------------|
-| LLM Backend | Groq (model: `openai/gpt-oss-20b`, free tier) |
-| SDK | `openai` (Python) – compatible with Groq’s OpenAI‑style endpoint |
-| Schema Enforcement | JSON Schema (`strict: true`) |
-| Configuration | `python-dotenv` |
-| Language | Python 3.10+ |
+| Language | Python |
+| LLM SDK | `openai` — official Python SDK, unmodified |
+| LLM Backend | Groq — `openai/gpt-oss-20b` (free tier) |
+| Compatibility Layer | OpenAI-compatible endpoint via `base_url` override |
+| Schema Format | JSON Schema (strict mode) |
+| Config | python-dotenv |
 
 ---
 
-## Script Reference
+## Extraction Schema
 
-| Command | Description |
-|---------|-------------|
-| `python main.py` | Reads 10 hardcoded unstructured review texts, sends each to Groq with the fixed JSON Schema, and prints the 10 resulting JSON objects to stdout |
-
-**Expected output**  
-Each printed JSON block contains exactly:
+Every input is run against the same schema, defined once and reused across all 10 calls.
 
 ```json
 {
-  "product_name": "string",
-  "rating": "number (1-5)",
-  "sentiment": "positive | negative | neutral",
-  "key_features": ["string", ...]
+  "type": "object",
+  "properties": {
+    "product_name": { "type": "string" },
+    "rating": { "type": "number" },
+    "sentiment": {
+      "type": "string",
+      "enum": ["positive", "negative", "neutral", "mixed"]
+    },
+    "key_features": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "required": ["product_name", "rating", "sentiment", "key_features"],
+  "additionalProperties": false
 }
 ```
 
-No extra keys. No missing fields. No type violations.
+### Request / Response Example
+
+**Input (unstructured review)**
+```
+"Battery life is solid, camera's a bit disappointing tbh. Screen is
+gorgeous though. Overall happy with the Pixel 9 — would recommend."
+```
+
+**Output (schema-valid JSON)**
+```json
+{
+  "product_name": "Pixel 9",
+  "rating": 4,
+  "sentiment": "mixed",
+  "key_features": ["battery life", "camera", "screen"]
+}
+```
+
+---
+
+## Structured Outputs vs. Free-Text JSON
+
+| Approach | How It Works | Reliability |
+|----------|--------------|-------------|
+| **Free-text JSON prompting** | Model is asked to "return JSON" in the prompt; output is parsed with `json.loads()` | Occasionally malformed — missing fields, wrong types, extra keys, or a non-JSON preamble |
+| **Structured Outputs (strict mode)** | Schema is passed directly via `response_format`; token-level constrained decoding makes an invalid shape impossible to emit | Schema-valid on every call — no retry or repair logic needed |
 
 ---
 
 ## Environment Variables
 
-Create a `.env` file based on `.env.example`:
+### `.env`
 
 ```env
-GROQ_API_KEY=your-api-key-here
+GROQ_API_KEY=your-groq-api-key
 ```
 
-| Variable | Description |
-|----------|-------------|
-| `GROQ_API_KEY` | API key from [console.groq.com/keys](https://console.groq.com/keys) |
+A documented `.env.example` is included in the repo.
 
 ---
 
@@ -130,33 +169,12 @@ GROQ_API_KEY=your-api-key-here
 ```bash
 git clone https://github.com/Fuad-Haque/structured-outputs-groq
 cd structured-outputs-groq
-cp .env.example .env      # then paste your Groq API key
+cp .env.example .env
 pip install -r requirements.txt
 python main.py
 ```
 
-You’ll see 10 perfectly‑shaped JSON objects printed to your terminal – no retries, no repairs.
-
----
-
-## Docker
-
-A container is not required to run the script. However, if you prefer to isolate the environment, you can use a minimal Dockerfile:
-
-```dockerfile
-FROM python:3.10-slim
-WORKDIR /app
-COPY . .
-RUN pip install -r requirements.txt
-CMD ["python", "main.py"]
-```
-
-Build and run:
-
-```bash
-docker build -t structured-outputs-groq .
-docker run --rm --env-file .env structured-outputs-groq
-```
+Expect 10 printed JSON blocks — each with exactly `product_name`, `rating`, `sentiment`, and `key_features`. No more, no fewer.
 
 ---
 
@@ -164,25 +182,11 @@ docker run --rm --env-file .env structured-outputs-groq
 
 ```
 structured-outputs-groq/
-├── main.py               # Entry point – loads inputs, calls Groq, prints results
-├── schema.py             # JSON Schema definition (imported by main.py)
-├── requirements.txt      # openai, python-dotenv
-├── .env.example          # Template for API key
+├── main.py              # Schema definition, Groq client setup, extraction loop
+├── .env.example
+├── requirements.txt
 └── README.md
 ```
-
----
-
-## Error Handling
-
-| Scenario | Behaviour |
-|----------|-----------|
-| Missing `GROQ_API_KEY` | Script exits with a clear error message |
-| Network / Groq API unreachable | Exception raised with the underlying HTTP error |
-| Unexpected API response (e.g. model overload) | Raised as an `openai` API error; script stops |
-| Schema violation in output | **Cannot happen** – strict mode prevents it at the token level |
-
-Because strict mode eliminates malformed JSON, there is no fallback parsing or repair logic — the guarantee is built into the generation process itself.
 
 ---
 
@@ -191,4 +195,3 @@ Because strict mode eliminates malformed JSON, there is no fallback parsing or r
 Built by [Fuad Haque](https://fuadhaque.com)
 
 [fuadhaque.dev@gmail.com](mailto:fuadhaque.dev@gmail.com) · [Book a Call](https://cal.com/fuad-haque) · [GitHub](https://github.com/Fuad-Haque)
-```
